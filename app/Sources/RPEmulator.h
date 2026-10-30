@@ -49,10 +49,10 @@ NS_ASSUME_NONNULL_BEGIN
  * missing or incomplete. Runs the caller onto a background queue itself is
  * NOT done here: call from a worker thread; progress lands in
  * provisionProgress. Returns NO with a detail message on failure. */
-- (BOOL)provisionWithError:(NSString **)error;
+- (BOOL)provisionWithError:(NSString **)error NS_SWIFT_NAME(provision(error:));
 
 /* Boot the machine and start the run thread. Call provision first. */
-- (BOOL)startWithError:(NSString **)error;
+- (BOOL)startWithError:(NSString **)error NS_SWIFT_NAME(start(error:));
 - (void)stop;
 
 /* The guest's current frame, decoded from its own scanout window, or nil

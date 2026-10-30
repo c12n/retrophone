@@ -25,7 +25,8 @@ NS_ASSUME_NONNULL_BEGIN
  * and import-policy-v1, and the result names the build. */
 + (nullable RPImportResult *)importIPSWAtPath:(NSString *)ipswPath
                                 intoDirectory:(NSString *)outDirectory
-                                        error:(NSString **)error;
+                                        error:(NSString **)error
+    NS_SWIFT_NAME(importIPSW(atPath:intoDirectory:error:));
 
 @end
 

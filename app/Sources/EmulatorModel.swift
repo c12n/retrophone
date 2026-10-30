@@ -36,7 +36,7 @@ final class EmulatorModel: ObservableObject {
         let emulator = self.emulator
         DispatchQueue.global(qos: .userInitiated).async {
             var error: NSString?
-            let ok = emulator.provisionWithError(&error)
+            let ok = emulator.provision(error: &error)
             DispatchQueue.main.async {
                 self.busy = nil
                 guard ok else {
@@ -45,7 +45,7 @@ final class EmulatorModel: ObservableObject {
                     return
                 }
                 var startError: NSString?
-                if emulator.startWithError(&startError) {
+                if emulator.start(error: &startError) {
                     self.beginPolling()
                 } else {
                     self.status = "Failed"

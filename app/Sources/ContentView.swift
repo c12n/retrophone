@@ -123,8 +123,8 @@ struct ImportView: View {
             let scoped = url.startAccessingSecurityScopedResource()
             defer { if scoped { url.stopAccessingSecurityScopedResource() } }
             var error: NSString?
-            let result = RPImport.importIPSWAtPath(
-                url.path, intoDirectory: firmwareDir.path, error: &error)
+            let result = RPImport.importIPSW(atPath: url.path,
+                intoDirectory: firmwareDir.path, error: &error)
             DispatchQueue.main.async {
                 working = nil
                 if let result {

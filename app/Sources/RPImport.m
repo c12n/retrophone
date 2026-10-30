@@ -8,6 +8,7 @@
 #include <string.h>
 
 #include "VMFirmwareImport.h"
+#include "VMFirmwareKeys.h"
 #include "VMFirmwarePolicy.h"
 
 /* ------------------------------------------------------------- IPSW source */

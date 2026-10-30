@@ -16,10 +16,12 @@ provisioning work developed alongside it.
 
 ## What works
 
-- Import an iPhone1,2 Restore IPSW (3.1.3 `7E18` or 4.2.1 `8C148`); the
-  kernel, device tree and root filesystem are extracted and verified
-  against known-good digests. No firmware is bundled or downloaded by
-  the app — you supply your own IPSW.
+- Get firmware two ways: download iPhone1,2 3.1.3 (`7E18`) or 4.2.1
+  (`8C148`) straight from Apple's servers with one tap — the download
+  is SHA-256-verified before import — or import an IPSW file of your
+  own. Either way the kernel, device tree and root filesystem are
+  extracted and verified against known-good digests. No firmware is
+  bundled with the app.
 - Create machines with a writable 8 GB disk, provisioned on first open
   (offline activation included).
 - Boot to the guest's own lock screen, rendered from the emulated
@@ -46,6 +48,9 @@ CI (`.github/workflows/build.yml`) builds an unsigned device build and
 packages an ad-hoc-signed IPA for sideloading.
 `.github/workflows/sim-run.yml` boots the app in an iOS 26 Simulator
 with a seeded 4.2.1 machine and uploads screenshots.
+`.github/workflows/sim-download.yml` runs the full first-run flow in
+the simulator: the app itself downloads 4.2.1 from Apple, verifies,
+imports, creates a machine and boots it.
 
 ## License
 

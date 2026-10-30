@@ -16,9 +16,24 @@ struct RetroPhoneApp: App {
         return store.machines.first
     }
 
+    /* The download rig launches with --rp-automation-download-8C148 (or
+     * -7E18): the app downloads that firmware from Apple, imports it,
+     * then creates and opens a machine — the full first-run flow. */
+    private var automationDownload: KnownFirmware? {
+        for argument in ProcessInfo.processInfo.arguments {
+            let prefix = "--rp-automation-download-"
+            if argument.hasPrefix(prefix) {
+                return KnownFirmware.named(
+                    build: String(argument.dropFirst(prefix.count)))
+            }
+        }
+        return nil
+    }
+
     var body: some Scene {
         WindowGroup {
-            ContentView(automationMachine: automationMachine)
+            ContentView(automationMachine: automationMachine,
+                        automationDownload: automationDownload)
                 .environmentObject(store)
         }
     }

@@ -16,6 +16,12 @@ struct ContentView: View {
      * uses this; it mirrors what a user tap does, nothing more). */
     var automationMachine: Machine?
 
+    /* Set by the app when launched with --rp-automation-download-<build>:
+     * the import sheet opens and downloads that firmware from Apple,
+     * imports it, then creates and opens a machine — the full first-run
+     * flow, unattended (the CI download rig uses this). */
+    var automationDownload: KnownFirmware?
+
     var body: some View {
         NavigationStack(path: $path) {
             List {
@@ -61,13 +67,37 @@ struct ContentView: View {
             .navigationDestination(for: Machine.self) { machine in
                 EmulatorScreen(machine: machine)
             }
-            .sheet(isPresented: $showImporter) { ImportView() }
+            .sheet(isPresented: $showImporter) {
+                ImportView(autoDownload: automationDownload,
+                           onImported: handleImported)
+            }
             .sheet(isPresented: $showCreate) { CreateMachineView() }
             .onAppear {
                 if let machine = automationMachine, path.isEmpty {
                     path = [machine]
                 }
+                if let download = automationDownload,
+                   store.firmware?.build != download.build {
+                    showImporter = true
+                } else if automationDownload != nil {
+                    handleImported()
+                }
             }
+        }
+    }
+}
+
+    /* After an automation-download import: open the existing machine,
+     * or create a CPU-software one and open it — what a user would do. */
+    private func handleImported() {
+        guard automationDownload != nil else { return }
+        if let machine = store.machines.first {
+            if path.isEmpty { path = [machine] }
+        } else if let firmware = store.firmware,
+                  let machine = store.createMachine(
+                    name: "iOS \(firmware.version) CPU software",
+                    softwareRender: true) {
+            path = [machine]
         }
     }
 }
@@ -80,20 +110,47 @@ struct ImportView: View {
     @State private var picking = false
     @State private var working: String?
     @State private var message: String?
+    @StateObject private var downloader = FirmwareDownloader()
+    @State private var didAutoStart = false
+
+    /* The CI download rig passes a firmware to fetch as soon as the
+     * sheet appears; a normal open leaves this nil. */
+    var autoDownload: KnownFirmware?
+    var onImported: (() -> Void)?
 
     var body: some View {
         NavigationStack {
             Form {
                 Section {
-                    Text("Choose an iPhone1,2 Restore IPSW — iPhone OS " +
-                         "3.1.3 (7E18) or iOS 4.2.1 (8C148). The three " +
-                         "files the emulator boots are extracted and " +
-                         "verified against known-good digests.")
+                    Text("Pick a version to download it straight from " +
+                         "Apple's servers — it is verified and imported " +
+                         "automatically. Or choose an IPSW file you " +
+                         "already have.")
                         .foregroundStyle(.secondary)
                 }
-                Section {
+                Section("Download from Apple") {
+                    ForEach(KnownFirmware.all) { firmware in
+                        HStack {
+                            VStack(alignment: .leading) {
+                                Text("\(firmware.displayName) " +
+                                     "(\(firmware.build))")
+                                Text("\(firmware.sizeText) · Apple servers")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Button("Download") {
+                                downloader.start(firmware)
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(downloader.isBusy || working != nil)
+                        }
+                    }
+                    downloadStatus
+                }
+                Section("From a file") {
                     Button("Choose IPSW file…") { picking = true }
-                        .disabled(working != nil)
+                        .disabled(working != nil || downloader.isBusy)
                     if let working {
                         HStack { ProgressView(); Text(working) }
                     }
@@ -111,6 +168,53 @@ struct ImportView: View {
             .fileImporter(isPresented: $picking,
                           allowedContentTypes: [.zip, .data]) { result in
                 if case .success(let url) = result { importIPSW(url) }
+            }
+            .onAppear {
+                if let autoDownload, !didAutoStart {
+                    didAutoStart = true
+                    downloader.start(autoDownload)
+                }
+            }
+            .onChange(of: downloader.phase) { _, newPhase in
+                if case .ready(let url) = newPhase, working == nil {
+                    importIPSW(url)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var downloadStatus: some View {
+        if let active = downloader.active {
+            switch downloader.phase {
+            case .downloading(let fraction, let written, let total):
+                VStack(alignment: .leading, spacing: 6) {
+                    ProgressView(value: fraction)
+                    HStack {
+                        Text("\(active.displayName): " +
+                             ByteCountFormatter.string(
+                                fromByteCount: written, countStyle: .file) +
+                             " of " +
+                             ByteCountFormatter.string(
+                                fromByteCount: total, countStyle: .file))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Cancel", role: .destructive) {
+                            downloader.cancel()
+                        }
+                        .font(.caption)
+                    }
+                }
+            case .verifying:
+                HStack {
+                    ProgressView()
+                    Text("Verifying \(active.displayName) download…")
+                }
+            case .failed(let failure):
+                Text(failure).foregroundStyle(.red)
+            default:
+                EmptyView()
             }
         }
     }
@@ -130,6 +234,12 @@ struct ImportView: View {
                 if let result {
                     store.recordFirmware(FirmwareMeta(
                         version: result.productVersion, build: result.build))
+                    /* A downloaded IPSW has served its purpose once the
+                     * firmware set is extracted — don't keep 300+ MB. */
+                    if url.path.contains("FirmwareDownloads") {
+                        try? FileManager.default.removeItem(at: url)
+                    }
+                    onImported?()
                     dismiss()
                 } else {
                     message = (error as String?) ?? "Import failed."

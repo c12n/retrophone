@@ -85,7 +85,6 @@ struct ContentView: View {
             }
         }
     }
-}
 
     /* After an automation-download import: open the existing machine,
      * or create a CPU-software one and open it — what a user would do. */

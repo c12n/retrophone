@@ -1,0 +1,3 @@
+The a64 static-engine handler table (a64_static_handlers.S) is generated
+into this directory by CI from Engine/host/gen_a64_static.py before the
+Xcode project is generated. It is a build artifact, not source.

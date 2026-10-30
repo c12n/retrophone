@@ -1,0 +1,87 @@
+# RetroPhone — hand-built Xcode project (XcodeGen).
+# Copyright (c) 2026 c12n Apps. MIT licensed.
+#
+# The app target compiles the SwiftUI shell, the Objective-C controllers
+# (RPEmulator, RPImport) and the vendored emulation Engine directly — the
+# same layout as the c12n hand-built projects. The Engine is portable C
+# (MIT, upstream S5LBox core — see Engine/UPSTREAM-LICENSE) plus the
+# host-side iOS 4 patch/provisioning library.
+name: RetroPhone
+options:
+  bundleIdPrefix: com.c12n
+  deploymentTarget:
+    iOS: "17.0"
+targets:
+  RetroPhone:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+      - path: ../Engine/core/src
+        excludes:
+          # The JIT is never built for the app (App Store / sideload rules
+          # and the static engine replaces it): its sources use APIs the
+          # app target must not reference.
+          - "**/jit/**"
+          # fwimport/fwupdate CLIs are built by the host workflow, not here.
+          - "fwimport.c"
+          - "fwupdate.c"
+      - path: ../Engine/host
+        includes:
+          - "*.c"
+      - path: ../Engine/import
+        includes:
+          - "*.c"
+      - path: Generated
+        excludes:
+          - ".gitkeep"
+    dependencies:
+      - sdk: Foundation.framework
+      - sdk: Security.framework
+      - sdk: UIKit.framework
+      - sdk: CoreGraphics.framework
+      - sdk: QuartzCore.framework
+      - sdk: libbz2.tbd
+      - sdk: libz.tbd
+    settings:
+      base:
+        PRODUCT_NAME: RetroPhone
+        PRODUCT_BUNDLE_IDENTIFIER: com.c12n.retrophone
+        INFOPLIST_FILE: Info.plist
+        CODE_SIGN_ENTITLEMENTS: RetroPhone.entitlements
+        HEADER_SEARCH_PATHS:
+          - $(SRCROOT)/../Engine/core/include
+          - $(SRCROOT)/../Engine/host
+          - $(SRCROOT)/../Engine/import
+          - $(SRCROOT)/Sources
+        GCC_C_LANGUAGE_STANDARD: c11
+        # The emulator's hot loop is an interpreter dispatch: -O3 + LTO is
+        # the difference between a slideshow and a machine (measured on
+        # the desktop harness, which has always built -O2 or better).
+        GCC_OPTIMIZATION_LEVEL: 3
+        LLVM_LTO: YES
+        GCC_PREPROCESSOR_DEFINITIONS:
+          - $(inherited)
+          - _FILE_OFFSET_BITS=64
+          - S5LBOX_STATIC_A64_ENGINE=1
+          - S5LBOX_STATIC_A64_NATIVE=1
+          # The callback-free live-byte static tier: the configuration the
+          # app ships, proven by the full-guest replays.
+          - S5LBOX_STATIC_A64_DEFAULT_COMPACT_RAW=1
+          - S5LBOX_STATIC_A64_DEFAULT_DIRECT_WRITES=1
+          # Idle WFI is paced to wall time so guest clocks and auto-lock
+          # do not run fast; active execution is bounded by real time too.
+          - S5LBOX_IOS_WFI_REALTIME_PACING=1
+          - S5LBOX_IOS_ACTIVE_REALTIME_CLOCK=1
+        CLANG_ENABLE_OBJC_ARC: YES
+        CLANG_ENABLE_MODULES: YES
+        SWIFT_OBJC_BRIDGING_HEADER: Sources/RetroPhone-Bridging-Header.h
+        SWIFT_VERSION: "5.0"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ENABLE_BITCODE: NO
+        # Unsigned bundle; CI ad-hoc signs it so the artifact is
+        # structurally complete, and a sideload installer re-signs it.
+        # No private or JIT entitlements are requested.
+        CODE_SIGNING_ALLOWED: NO
+        CODE_SIGNING_REQUIRED: NO
+        CODE_SIGN_IDENTITY: ""

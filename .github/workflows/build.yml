@@ -1,0 +1,90 @@
+name: build
+
+# Builds the RetroPhone app on a hosted macOS runner. CI has no Apple
+# signing identity, so it applies a private-entitlement-free ad-hoc
+# signature and uploads the .ipa as an artifact; sideload installers
+# re-sign it with the user's own provisioning.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - 'Engine/**'
+      - '.github/workflows/build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build ad-hoc-signed .ipa
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select newest installed Xcode
+        run: |
+          latest=$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)
+          if [ -n "$latest" ]; then sudo xcode-select -s "$latest"; fi
+          xcodebuild -version
+
+      - name: Install XcodeGen (pinned)
+        run: |
+          set -euo pipefail
+          XCODEGEN_VERSION=2.46.0
+          curl -fsSL -o /tmp/xcodegen.zip \
+            "https://github.com/yonaskolb/XcodeGen/releases/download/${XCODEGEN_VERSION}/xcodegen.zip"
+          unzip -q /tmp/xcodegen.zip -d /tmp/xcodegen
+          sudo /tmp/xcodegen/xcodegen/install.sh
+          xcodegen --version
+
+      - name: Generate Xcode project
+        working-directory: app
+        run: |
+          set -euo pipefail
+          mkdir -p Generated
+          python3 ../Engine/host/gen_a64_static.py \
+            Generated/a64_static_handlers.S
+          test -s Generated/a64_static_handlers.S
+          xcodegen generate
+
+      - name: Build (unsigned, arm64/iphoneos)
+        working-directory: app
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project RetroPhone.xcodeproj \
+            -target RetroPhone \
+            -configuration Release \
+            -sdk iphoneos \
+            -arch arm64 \
+            CONFIGURATION_BUILD_DIR="$PWD/dist" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build
+          binary="$PWD/dist/RetroPhone.app/RetroPhone"
+          test -f "$binary"
+          xcrun nm "$binary" |
+            awk '$NF == "_a64_static_execute" { found=1 }
+                 END { exit !found }'
+
+      - name: Ad-hoc sign + package .ipa
+        working-directory: app
+        run: |
+          set -euo pipefail
+          APP="dist/RetroPhone.app"
+          test -d "$APP"
+          codesign --force --sign - --timestamp=none \
+            --entitlements RetroPhone.entitlements "$APP"
+          codesign --verify --strict --verbose=2 "$APP"
+          rm -rf Payload && mkdir Payload
+          cp -R "$APP" Payload/
+          zip -qry RetroPhone.ipa Payload
+          ls -lh RetroPhone.ipa
+
+      - name: Upload .ipa
+        uses: actions/upload-artifact@v4
+        with:
+          name: RetroPhone-ipa
+          path: app/RetroPhone.ipa
+          if-no-files-found: error
